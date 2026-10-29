@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: inzar-postgis
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inzar
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inzar"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inzar-api
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/inzar
+      DATABASE_URL_DIRECT: postgresql+asyncpg://postgres:postgres@db:5432/inzar
+      DATABASE_SSL: "false"
+      SECRET_KEY: test_docker_secret_key_at_least_32_characters_long
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inzar-worker
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/inzar
+      DATABASE_URL_DIRECT: postgresql+asyncpg://postgres:postgres@db:5432/inzar
+      DATABASE_SSL: "false"
+      SECRET_KEY: test_docker_secret_key_at_least_32_characters_long
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "app.jobs.worker"]
+
+volumes:
+  pgdata:
+
