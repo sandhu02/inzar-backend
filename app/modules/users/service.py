@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,3 +81,21 @@ class UserService:
             user=self._to_response(user),
             export_generated_at=datetime.now(UTC),
         )
+
+    async def admin_update_user(
+        self,
+        user_id: uuid.UUID,
+        role: str | None = None,
+        is_suspended: bool | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        user = await self.get_user_by_id(user_id)
+        before = {"role": user.role, "is_suspended": user.is_suspended}
+        updates: dict[str, Any] = {}
+        if role is not None:
+            updates["role"] = role
+        if is_suspended is not None:
+            updates["is_suspended"] = is_suspended
+        if updates:
+            await self.repository.update(user, **updates)
+        after = {"role": user.role, "is_suspended": user.is_suspended}
+        return before, after

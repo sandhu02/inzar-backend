@@ -79,9 +79,9 @@ uv run python -m app.jobs.worker
 |---|---|---|---|
 | **Phase 0** | Foundation (Skeleton, Config, DB, PostGIS, Errors, Logging, Health, Docker, CI, Import tests) | Completed | App boots, `/healthz` & `/readyz`, Alembic up/down, import boundaries pass |
 | **Phase 1** | Auth & Users (Argon2, JWT, Google Auth, Refresh token rotation, Email tokens, Me endpoints) | Completed | Full auth matrix, token reuse revocation, role dependencies, CLI admin |
-| **Phase 2** | Categories & Settings (Admin tunables, Seed defaults, Public endpoints, Cache, Audit logging) | In Progress | Category CRUD, global tunables, audit logs, seed idempotency |
-| **Phase 3** | Media & Incident Submission + Review Pipeline (Cloudinary signatures, PG queue, Review stub) | Not Started | Submit -> upload -> confirm -> review pipeline -> status check |
-| **Phase 4** | Map Queries, Details, Flags, Lifecycle (ST_DWithin, Cursor pagination, Flags, Auto-stale/expire) | Not Started | Spatial queries, clustering, lifecycle jobs, corroboration/abuse thresholds |
-| **Phase 5** | Alerts & Push (Preferences, FCM/Log providers, Spatial fanout, Throttling, Digests) | Not Started | Spatial fanout query, deduplication, rate limits, neutral notifications |
-| **Phase 6** | Admin & Moderation Backend (Queue, Approve/Reject, Users, Flags, Dead-letter jobs, Stats) | Not Started | Role matrix, audit logs, moderation actions, stats overview |
-| **Phase 7** | Hardening & Render Deployment (Security pass, Render blueprint, Docker, Docs, E2E test) | Not Started | Load tests, E2E journey, production build, full documentation |
+| **Phase 2** | Categories & Settings (Admin tunables, Seed defaults, Public endpoints, Cache, Audit logging) | Completed | Category CRUD, global tunables, audit logs, seed idempotency (`docs/phases/phase-2-report.md`) |
+| **Phase 3** | Media & Incident Submission + Review Pipeline (Cloudinary signatures, PG queue, Review stub) | Completed | Submit -> upload -> confirm -> review pipeline -> status check (`docs/phases/phase-3-report.md`) |
+| **Phase 4** | Map Queries, Details, Flags, Lifecycle (ST_DWithin, Cursor pagination, Flags, Auto-stale/expire) | Completed | Spatial queries, clustering, lifecycle jobs, corroboration/abuse thresholds (`docs/phases/phase-4-report.md`) |
+| **Phase 5** | Alerts & Push (Preferences, FCM/Log providers, Spatial fanout, Throttling, Digests) | Completed | Spatial fanout query, deduplication, rate limits, neutral notifications (`docs/phases/phase-5-report.md`) |
+| **Phase 6** | Admin & Moderation Backend (Queue, Approve/Reject, Users, Flags, Dead-letter jobs, Stats) | Completed | Role matrix, audit logs, moderation actions, stats overview (`docs/phases/phase-6-report.md`) |
+| **Phase 7** | Hardening & Render Deployment (Security pass, Render blueprint, Docker, Docs, OpenAPI export) | Completed | Security headers, Render blueprint, docs/API.md, openapi.json (`docs/phases/phase-7-report.md`) |

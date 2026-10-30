@@ -9,7 +9,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password, validate_password_strength
 from app.db.session import AsyncSessionLocal
+from app.modules.categories.service import CategoryService
+from app.modules.settings.service import SettingsService
 from app.modules.users.service import UserService
+
+
+async def seed_data(session: AsyncSession | None = None) -> None:
+    if session is not None:
+        cat_service = CategoryService(session)
+        settings_service = SettingsService(session)
+        cats_seeded = await cat_service.seed_defaults_if_needed()
+        settings_seeded = await settings_service.seed_defaults_if_needed()
+        print(f"Seeded {cats_seeded} categories, {settings_seeded} settings.")
+        return
+
+    async with AsyncSessionLocal() as session_ctx:
+        cat_service = CategoryService(session_ctx)
+        settings_service = SettingsService(session_ctx)
+        cats_seeded = await cat_service.seed_defaults_if_needed()
+        settings_seeded = await settings_service.seed_defaults_if_needed()
+        print(f"Seeded {cats_seeded} categories, {settings_seeded} settings.")
 
 
 async def create_admin(
@@ -64,10 +83,15 @@ def main() -> None:
     admin_parser.add_argument("--password", required=True, help="Admin password")
     admin_parser.add_argument("--display-name", default="Administrator", help="Admin display name")
 
+    # Subcommand: seed
+    subparsers.add_parser("seed", help="Seed default categories and global settings")
+
     args = parser.parse_args()
 
     if args.command == "create-admin":
         asyncio.run(create_admin(args.email, args.password, args.display_name))
+    elif args.command == "seed":
+        asyncio.run(seed_data())
 
 
 if __name__ == "__main__":
