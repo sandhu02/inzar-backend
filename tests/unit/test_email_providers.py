@@ -12,6 +12,7 @@ from app.integrations.email.provider import (
 @pytest.mark.asyncio
 async def test_console_email_provider():
     provider = ConsoleEmailProvider()
+    assert provider.can_deliver_email is False
     ok = await provider.send_verification_email("user@example.com", "token123")
     assert ok is True
     assert len(provider.sent_emails) == 1
@@ -26,10 +27,18 @@ async def test_console_email_provider():
 async def test_resend_email_provider():
     # Without api key -> logs warning and returns False
     empty_provider = ResendEmailProvider(api_key="", from_address="test@inzar.app")
+    assert empty_provider.can_deliver_email is False
     assert await empty_provider.send_email("to@example.com", "Sub", "<p>hi</p>", "hi") is False
+    assert (
+        ResendEmailProvider(
+            api_key="re_placeholder", from_address="test@inzar.app"
+        ).can_deliver_email
+        is False
+    )
 
     # With mocked httpx
     provider = ResendEmailProvider(api_key="re_12345", from_address="test@inzar.app")
+    assert provider.can_deliver_email is True
     with patch("httpx.AsyncClient.post") as mock_post:
         mock_resp = AsyncMock()
         mock_resp.status_code = 200
@@ -37,6 +46,9 @@ async def test_resend_email_provider():
 
         ok = await provider.send_email("to@example.com", "Sub", "<p>hi</p>", "hi")
         assert ok is True
+
+        mock_resp.status_code = 403
+        assert await provider.send_email("to@example.com", "Sub", "<p>hi</p>", "hi") is False
 
     # Provider factory
     assert get_email_provider() is not None

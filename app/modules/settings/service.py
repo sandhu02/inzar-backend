@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.admin.service import AdminService
+from app.modules.admin.audit_service import AuditService
 from app.modules.settings.models import AppSetting
 from app.modules.settings.repository import SettingsRepository
 from app.modules.settings.schemas import (
@@ -29,7 +29,7 @@ class SettingsService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = SettingsRepository(session)
-        self.admin_service = AdminService(session)
+        self.audit_service = AuditService(session)
 
     async def seed_defaults_if_needed(self) -> int:
         """Seed default settings into DB if empty."""
@@ -111,7 +111,7 @@ class SettingsService:
             after[key] = value
             await self.repo.set(key=key, value=value, updated_by=actor_id)
 
-        await self.admin_service.log_audit_action(
+        await self.audit_service.log_audit_action(
             action="settings.update",
             target_type="settings",
             target_id="global",

@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import BadRequestError, ConflictError, NotFoundError
-from app.modules.admin.service import AdminService
+from app.modules.admin.audit_service import AuditService
 from app.modules.categories.models import Category
 from app.modules.categories.repository import CategoryRepository
 from app.modules.categories.schemas import CategoryCreate, CategoryUpdate
@@ -125,7 +125,7 @@ class CategoryService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = CategoryRepository(session)
-        self.admin_service = AdminService(session)
+        self.audit_service = AuditService(session)
 
     async def seed_defaults_if_needed(self) -> int:
         """Idempotently seed default categories if none exist."""
@@ -185,7 +185,7 @@ class CategoryService:
         cat_dict = data.model_dump()
         category = await self.repo.create(cat_dict)
 
-        await self.admin_service.log_audit_action(
+        await self.audit_service.log_audit_action(
             action="category.create",
             target_type="category",
             target_id=str(category.id),
@@ -219,7 +219,7 @@ class CategoryService:
         updated = await self.repo.update(category, update_dict)
         after = {k: getattr(updated, k) for k in update_dict}
 
-        await self.admin_service.log_audit_action(
+        await self.audit_service.log_audit_action(
             action="category.update",
             target_type="category",
             target_id=str(category.id),

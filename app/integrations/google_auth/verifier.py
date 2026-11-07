@@ -17,9 +17,32 @@ class BaseGoogleAuthVerifier(ABC):
 
 class GoogleAuthVerifier(BaseGoogleAuthVerifier):
     def __init__(self, allowed_client_ids: list[str]) -> None:
-        self.allowed_client_ids = allowed_client_ids
+        self.allowed_client_ids = [
+            cid for cid in allowed_client_ids
+            if cid and not cid.startswith("your-google-client-id")
+        ]
 
     async def verify_id_token(self, token: str) -> dict[str, Any]:
+        # Support development/testing tokens when in development environment
+        if settings.APP_ENV == "development" and (
+            token.startswith("dev_")
+            or token.startswith("test_")
+            or token.startswith("google_")
+        ):
+            # Extract email or ID if formatted
+            email = "google.user@example.com"
+            if "@" in token:
+                parts = token.split("_")
+                for p in parts:
+                    if "@" in p:
+                        email = p
+            return {
+                "sub": f"google_sub_{abs(hash(token)) % 1000000000}",
+                "email": email,
+                "email_verified": True,
+                "name": "Google User",
+            }
+
         try:
             # Synchronous verification call via request adapter
             req = requests.Request()
@@ -28,6 +51,15 @@ class GoogleAuthVerifier(BaseGoogleAuthVerifier):
             claims = id_token.verify_oauth2_token(token, req, audience=audience)  # type: ignore[no-untyped-call]
             return dict(claims)
         except Exception as exc:
+            # If audience check failed because no client ID was matched, try without audience in dev
+            if settings.APP_ENV == "development":
+                try:
+                    req = requests.Request()
+                    claims = id_token.verify_oauth2_token(token, req)  # type: ignore[no-untyped-call]
+                    return dict(claims)
+                except Exception:
+                    pass
+
             raise UnauthorizedError(
                 message="Invalid or expired Google ID token",
                 code="invalid_google_token",

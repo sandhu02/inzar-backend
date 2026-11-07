@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import NotFoundError
 from app.integrations.cloudinary.service import BaseCloudinaryService, get_cloudinary_service
 from app.jobs.queue import JobQueue
+from app.modules.admin.audit_service import AuditService
 from app.modules.admin.models import AuditLog
 from app.modules.admin.repository import AdminRepository
 from app.modules.admin.schemas import (
@@ -31,6 +32,7 @@ class AdminService:
     ) -> None:
         self.session = session
         self.repo = AdminRepository(session)
+        self.audit_service = AuditService(session)
         self.incident_service = IncidentService(session, cloudinary_service=cloudinary_service)
         self.category_service = CategoryService(session)
         self.user_service = UserService(session)
@@ -45,12 +47,12 @@ class AdminService:
         summary: dict[str, Any] | None = None,
         actor_id: uuid.UUID | None = None,
     ) -> AuditLog:
-        return await self.repo.create_audit_log(
-            actor_id=actor_id,
+        return await self.audit_service.log_audit_action(
             action=action,
             target_type=target_type,
             target_id=target_id,
-            summary=summary or {},
+            summary=summary,
+            actor_id=actor_id,
         )
 
     async def get_audit_logs(
@@ -61,7 +63,7 @@ class AdminService:
         limit: int = 50,
         offset: int = 0,
     ) -> list[AuditLog]:
-        return await self.repo.list_audit_logs(
+        return await self.audit_service.get_audit_logs(
             actor_id=actor_id,
             action=action,
             target_type=target_type,

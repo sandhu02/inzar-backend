@@ -1,6 +1,8 @@
+import asyncio
 import hashlib
 import logging
 import secrets
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -8,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.errors import (
+    AppError,
     BadRequestError,
     ConflictError,
     ForbiddenError,
@@ -87,7 +90,7 @@ class AuthService:
             raise ConflictError("User with this email already exists", code="user_exists")
 
         validate_password_strength(data.password)
-        hashed_pwd = hash_password(data.password)
+        hashed_pwd = await asyncio.to_thread(hash_password, data.password)
 
         user = await self.user_service.create_user(
             email=data.email,
@@ -108,8 +111,12 @@ class AuthService:
             expires_at=verify_expiry,
         )
 
-        # Send email in background / via provider
-        await self.email_provider.send_verification_email(user.email, raw_verify_token)
+        if not await self.email_provider.send_verification_email(user.email, raw_verify_token):
+            raise AppError(
+                message="Could not send verification email. Please try again later.",
+                code="email_delivery_failed",
+                status_code=503,
+            )
 
         access_token, refresh_token, expires_in = await self._issue_token_pair(user, user_agent)
         return TokenResponse(
@@ -121,19 +128,73 @@ class AuthService:
         )
 
     async def login(self, data: LoginRequest, user_agent: str | None = None) -> TokenResponse:
+        stage_started = time.perf_counter()
+        logger.info(
+            "Login user lookup started",
+            extra={"extra_data": {"stage": "user_lookup"}},
+        )
         user = await self.user_service.get_by_email(data.email)
-        # Prevent user enumeration: identical response if user doesn't exist or password mismatch
-        if (
-            not user
-            or not user.password_hash
-            or not verify_password(data.password, user.password_hash)
-        ):
+        logger.info(
+            "Login user lookup completed",
+            extra={
+                "extra_data": {
+                    "stage": "user_lookup",
+                    "duration_ms": round((time.perf_counter() - stage_started) * 1000, 2),
+                    "found": user is not None,
+                }
+            },
+        )
+        # Prevent user enumeration: identical response if user doesn't exist or password mismatch.
+        if not user or not user.password_hash:
+            raise UnauthorizedError("Invalid email or password", code="invalid_credentials")
+
+        stage_started = time.perf_counter()
+        logger.info(
+            "Login password verification started",
+            extra={"extra_data": {"stage": "password_verification"}},
+        )
+        password_valid = await asyncio.to_thread(
+            verify_password,
+            data.password,
+            user.password_hash,
+        )
+        logger.info(
+            "Login password verification completed",
+            extra={
+                "extra_data": {
+                    "stage": "password_verification",
+                    "duration_ms": round((time.perf_counter() - stage_started) * 1000, 2),
+                    "valid": password_valid,
+                }
+            },
+        )
+        if not password_valid:
             raise UnauthorizedError("Invalid email or password", code="invalid_credentials")
 
         if user.is_suspended:
             raise ForbiddenError("Your account has been suspended", code="account_suspended")
 
+        if user.email_verified_at is None:
+            raise ForbiddenError(
+                "Please verify your email before signing in",
+                code="email_not_verified",
+            )
+
+        stage_started = time.perf_counter()
+        logger.info(
+            "Login session creation started",
+            extra={"extra_data": {"stage": "session_creation"}},
+        )
         access_token, refresh_token, expires_in = await self._issue_token_pair(user, user_agent)
+        logger.info(
+            "Login session creation completed",
+            extra={
+                "extra_data": {
+                    "stage": "session_creation",
+                    "duration_ms": round((time.perf_counter() - stage_started) * 1000, 2),
+                }
+            },
+        )
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -265,6 +326,13 @@ class AuthService:
         await self.user_service.set_email_verified(token.user_id)
 
     async def resend_verification(self, email: str) -> None:
+        if not self.email_provider.can_deliver_email:
+            raise AppError(
+                message="Email delivery is not configured on the server.",
+                code="email_delivery_unavailable",
+                status_code=503,
+            )
+
         user = await self.user_service.get_by_email(email)
         if user and not user.email_verified_at:
             raw_token = secrets.token_urlsafe(32)
@@ -277,7 +345,12 @@ class AuthService:
                 token_hash=token_hash,
                 expires_at=expiry,
             )
-            await self.email_provider.send_verification_email(user.email, raw_token)
+            if not await self.email_provider.send_verification_email(user.email, raw_token):
+                raise AppError(
+                    message="Could not send verification email. Please try again later.",
+                    code="email_delivery_failed",
+                    status_code=503,
+                )
 
     async def forgot_password(self, email: str) -> None:
         user = await self.user_service.get_by_email(email)
@@ -301,7 +374,7 @@ class AuthService:
             raise BadRequestError("Invalid or expired password reset token", code="invalid_token")
 
         validate_password_strength(data.new_password)
-        hashed_pwd = hash_password(data.new_password)
+        hashed_pwd = await asyncio.to_thread(hash_password, data.new_password)
 
         await self.user_service.update_password(token.user_id, hashed_pwd)
         await self.auth_repo.mark_email_token_used(token)

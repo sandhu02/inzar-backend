@@ -72,12 +72,31 @@ async def test_email_verification_flow(
 
 
 @pytest.mark.asyncio
-async def test_login_flow_and_no_user_enumeration(client: AsyncClient):
+async def test_login_flow_and_no_user_enumeration(
+    client: AsyncClient,
+    fake_email: FakeEmailProvider,
+):
     rate_limiter.reset()
     email = "login-test@example.com"
     pwd = "ValidPassword123!"
 
     await client.post("/api/v1/auth/signup", json={"email": email, "password": pwd})
+
+    # Correct credentials are insufficient until the email is verified.
+    res_unverified = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": pwd},
+    )
+    assert res_unverified.status_code == 403
+    assert res_unverified.json()["error"]["code"] == "email_not_verified"
+
+    verification_token = fake_email.get_last_token_for(email)
+    assert verification_token is not None
+    res_verify = await client.post(
+        "/api/v1/auth/verify-email",
+        json={"token": verification_token},
+    )
+    assert res_verify.status_code == 200
 
     # Success
     res_success = await client.post("/api/v1/auth/login", json={"email": email, "password": pwd})
@@ -216,6 +235,14 @@ async def test_password_reset_flow(client: AsyncClient, fake_email: FakeEmailPro
 
     res_signup = await client.post("/api/v1/auth/signup", json={"email": email, "password": pwd1})
     initial_refresh = res_signup.json()["refresh_token"]
+
+    verification_token = fake_email.get_last_token_for(email)
+    assert verification_token is not None
+    res_verify = await client.post(
+        "/api/v1/auth/verify-email",
+        json={"token": verification_token},
+    )
+    assert res_verify.status_code == 200
 
     # Request reset
     await client.post("/api/v1/auth/forgot-password", json={"email": email})

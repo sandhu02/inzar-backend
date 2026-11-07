@@ -18,14 +18,21 @@ All responses follow uniform JSON error envelopes:
 ## 1. Authentication & Users
 
 ### `POST /api/v1/auth/signup`
-Creates a new account with email and strong password.
+Creates a new account with email and strong password, then requests a verification email.
 - **Body**: `{ "email": "...", "password": "...", "display_name": "..." }`
 - **Response (201)**: User object with tokens.
+- **Delivery failure (503)**: `email_delivery_failed`; the signup transaction is rolled back.
 
 ### `POST /api/v1/auth/login`
-Authenticates with email and password. Protected with constant-time validation to prevent user enumeration.
+Authenticates with email and password. Email verification is required before a session is issued; unverified accounts receive `403 email_not_verified`. Invalid credentials use the same response whether the account exists or the password is incorrect.
 - **Body**: `{ "email": "...", "password": "..." }`
 - **Response (200)**: `{ "access_token": "...", "refresh_token": "...", "user": {...} }`
+
+### `POST /api/v1/auth/resend-verification`
+Requests a new verification email for an unverified account.
+- **Body**: `{ "email": "..." }`
+- **Response (200)**: Generic confirmation that does not disclose whether the account exists or is verified.
+- **Delivery failure (503)**: `email_delivery_unavailable` or `email_delivery_failed`.
 
 ### `POST /api/v1/auth/google`
 Authenticates with Google ID token.
@@ -175,4 +182,3 @@ Unregisters push device token.
 - `GET /api/v1/admin/jobs`: Inspect background queue.
 - `POST /api/v1/admin/jobs/{id}/retry`: Retry failed/dead-letter job.
 - `GET /api/v1/admin/audit-log`: Immutable security and moderation audit log.
-

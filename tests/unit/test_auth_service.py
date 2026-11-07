@@ -3,7 +3,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import BadRequestError, UnauthorizedError
+from app.core.errors import AppError, BadRequestError, UnauthorizedError
+from app.integrations.email.provider import ConsoleEmailProvider
 from app.modules.auth.schemas import (
     GoogleLoginRequest,
     LoginRequest,
@@ -15,6 +16,17 @@ from app.modules.auth.schemas import (
 )
 from app.modules.auth.service import AuthService
 from tests.fakes import FakeEmailProvider, FakeGoogleAuthVerifier
+
+
+class FailingEmailProvider(FakeEmailProvider):
+    async def send_email(
+        self,
+        to_email: str,
+        subject: str,
+        html_content: str,
+        text_content: str,
+    ) -> bool:
+        return False
 
 
 @pytest.fixture
@@ -49,6 +61,50 @@ async def test_auth_service_resend_verification_and_forgot_password(
 
     # 3. Forgot password for non-existent email (should not raise)
     await auth_service_unit.forgot_password("unknown@example.com")
+
+
+@pytest.mark.asyncio
+async def test_resend_verification_fails_when_email_delivery_is_not_configured(
+    auth_service_unit: AuthService,
+):
+    auth_service_unit.email_provider = ConsoleEmailProvider()
+
+    with pytest.raises(AppError) as error:
+        await auth_service_unit.resend_verification("user@example.com")
+
+    assert error.value.status_code == 503
+    assert error.value.code == "email_delivery_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_signup_fails_if_verification_email_is_rejected(
+    auth_service_unit: AuthService,
+):
+    auth_service_unit.email_provider = FailingEmailProvider()
+
+    with pytest.raises(AppError) as error:
+        await auth_service_unit.signup(
+            SignupRequest(email="delivery-failed@example.com", password="Password123!")
+        )
+
+    assert error.value.status_code == 503
+    assert error.value.code == "email_delivery_failed"
+
+
+@pytest.mark.asyncio
+async def test_resend_verification_fails_if_email_is_rejected(
+    auth_service_unit: AuthService,
+):
+    await auth_service_unit.signup(
+        SignupRequest(email="resend-failed@example.com", password="Password123!")
+    )
+    auth_service_unit.email_provider = FailingEmailProvider()
+
+    with pytest.raises(AppError) as error:
+        await auth_service_unit.resend_verification("resend-failed@example.com")
+
+    assert error.value.status_code == 503
+    assert error.value.code == "email_delivery_failed"
 
 
 @pytest.mark.asyncio
@@ -136,6 +192,7 @@ async def test_auth_service_reset_password_errors(
 async def test_auth_service_signup_duplicate_and_login_paths(
     auth_service_unit: AuthService,
     db_session: AsyncSession,
+    fake_email: FakeEmailProvider,
 ):
     # Duplicate signup raises ConflictError
     await auth_service_unit.signup(SignupRequest(email="dup@example.com", password="Password123!"))
@@ -145,6 +202,17 @@ async def test_auth_service_signup_duplicate_and_login_paths(
         await auth_service_unit.signup(
             SignupRequest(email="dup@example.com", password="Password123!")
         )
+
+    # Unverified accounts cannot create a login session.
+    with pytest.raises(ForbiddenError) as unverified_error:
+        await auth_service_unit.login(
+            LoginRequest(email="dup@example.com", password="Password123!")
+        )
+    assert unverified_error.value.code == "email_not_verified"
+
+    verification_token = fake_email.get_last_token_for("dup@example.com")
+    assert verification_token is not None
+    await auth_service_unit.verify_email(VerifyEmailRequest(token=verification_token))
 
     # Login success
     login_res = await auth_service_unit.login(

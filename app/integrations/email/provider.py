@@ -10,6 +10,10 @@ logger = logging.getLogger("inzar.integrations.email")
 
 
 class BaseEmailProvider(ABC):
+    @property
+    def can_deliver_email(self) -> bool:
+        return True
+
     @abstractmethod
     async def send_email(
         self,
@@ -35,6 +39,10 @@ class BaseEmailProvider(ABC):
 
 
 class ConsoleEmailProvider(BaseEmailProvider):
+    @property
+    def can_deliver_email(self) -> bool:
+        return False
+
     def __init__(self) -> None:
         self.sent_emails: list[dict[str, Any]] = []
 
@@ -64,6 +72,14 @@ class ResendEmailProvider(BaseEmailProvider):
         self.from_address = from_address
         self.endpoint = "https://api.resend.com/emails"
 
+    @property
+    def can_deliver_email(self) -> bool:
+        return (
+            bool(self.api_key.strip())
+            and not self.api_key.strip().lower().startswith("re_placeholder")
+            and bool(self.from_address.strip())
+        )
+
     async def send_email(
         self,
         to_email: str,
@@ -71,8 +87,8 @@ class ResendEmailProvider(BaseEmailProvider):
         html_content: str,
         text_content: str,
     ) -> bool:
-        if not self.api_key:
-            logger.warning("Resend API key not set; falling back to log.")
+        if not self.can_deliver_email:
+            logger.error("Resend email delivery is not configured.")
             return False
 
         headers = {
@@ -92,11 +108,13 @@ class ResendEmailProvider(BaseEmailProvider):
                 if res.status_code in (200, 201):
                     return True
                 logger.error(
-                    f"Resend email sending failed with status {res.status_code}: {res.text}"
+                    "Resend rejected an email request with status %s: %s",
+                    res.status_code,
+                    res.text,
                 )
                 return False
-            except Exception as exc:
-                logger.error(f"Resend error: {exc}")
+            except httpx.HTTPError as exc:
+                logger.error("Resend email request failed: %s", type(exc).__name__)
                 return False
 
 

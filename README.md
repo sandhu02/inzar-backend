@@ -57,9 +57,16 @@ uv run mypy app
 uv run pytest -q --cov=app
 ```
 
+## Documentation
+- [Flutter Frontend Integration Guide](docs/FLUTTER_INTEGRATION_GUIDE.md): Complete guide for mobile developers (Dart models, Dio client with token refresh, Cloudinary direct upload, map queries, FCM push, error handling).
+- [API Reference](docs/API.md): Endpoint catalog and request/response envelopes.
+- [Architecture & Design](docs/ARCHITECTURE.md): Modular monolith boundaries, PostGIS spatial queries, and PostgreSQL SKIP LOCKED queue mechanics.
+- [Deployment Guide](docs/DEPLOYMENT.md): Step-by-step Neon PostgreSQL 16 and Render deployment instructions.
+
 ## API Documentation
 Once running, OpenAPI interactive documentation is available at:
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 - OpenAPI JSON: `http://localhost:8000/openapi.json`
+
 
